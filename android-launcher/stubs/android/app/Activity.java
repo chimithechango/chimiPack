@@ -1,0 +1,1 @@
+package android.app; public class Activity extends android.content.Context { protected void onCreate(android.os.Bundle b){} public final boolean requestWindowFeature(int f){return true;} public void setContentView(android.view.View v){} public void onWindowFocusChanged(boolean h){} public void onBackPressed(){} }

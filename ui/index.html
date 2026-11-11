@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en" data-theme="%%THEME%%" data-accent="%%ACCENT%%">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chimiPack</title>
+<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23E4572E'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Segoe UI,sans-serif' font-weight='700' font-size='20' fill='white'%3Ec%3C/text%3E%3C/svg%3E">
+<script>
+/* Accent colors. Presets are a base color; light/dark variants are derived so text on them stays readable. */
+const ACCENTS = [
+  ["chimi", "Chimi", "#E4572E"], ["ruby", "Ruby", "#D6334A"], ["amber", "Amber", "#D4930D"], ["green", "Green", "#2E9E5B"],
+  ["teal", "Teal", "#12939F"], ["blue", "Blue", "#2F6FDE"], ["violet", "Violet", "#7A4FBF"], ["pink", "Pink", "#D63384"],
+  ["graphite", "Graphite", "#52525B"],
+];
+function _lum(hex) {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+  return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+}
+function _contrast(a, b) { const x = _lum(a), y = _lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); }
+function _mix(a, b, t) {
+  const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const [x, y] = [p(a), p(b)];
+  return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
+}
+function accentShades(hex) {
+  let light = hex, dark = hex;
+  for (let i = 0; i < 30 && _contrast(light, "#ffffff") < 4.5; i++) light = _mix(light, "#000000", .06);
+  for (let i = 0; i < 30 && _contrast(dark, "#1d1c1b") < 5; i++) dark = _mix(dark, "#ffffff", .06);
+  return { light, lightFg: "#ffffff", dark, darkFg: _contrast(dark, "#ffffff") >= 4.5 ? "#ffffff" : "#16120f" };
+}
+function accentBase(value) {
+  const preset = ACCENTS.find(a => a[0] === value);
+  return preset ? preset[2] : /^#[0-9a-fA-F]{6}$/.test(value || "") ? value : ACCENTS[0][2];
+}
+function applyAccent(value) {
+  const s = value === "chimi" || !value || value.startsWith("%%")
+    ? { light: "#c4441c", lightFg: "#ffffff", dark: "#ff7a4d", darkFg: "#1c0d06" }   // hand-tuned brand default
+    : accentShades(accentBase(value));
+  const st = document.documentElement.style;
+  st.setProperty("--a-light", s.light); st.setProperty("--a-light-fg", s.lightFg);
+  st.setProperty("--a-dark", s.dark); st.setProperty("--a-dark-fg", s.darkFg);
+  document.documentElement.dataset.accent = value;
+  applyLogo(accentBase(value));
+}
+
+/* The logo (in-app mark, page icon and the window/taskbar icon) uses the accent's base color. */
+let _logoTimer = 0;
+function applyLogo(base) {
+  const fg = _contrast(base, "#ffffff") >= 2.6 ? "#ffffff" : "#16120f";
+  const st = document.documentElement.style;
+  st.setProperty("--logo", base); st.setProperty("--logo-fg", fg);
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='${base}'/>` +
+    `<text x='16' y='23' text-anchor='middle' font-family='Segoe UI,sans-serif' font-weight='700' font-size='20' fill='${fg}'>c</text></svg>`;
+  const link = document.getElementById("favicon");
+  if (link) link.href = "data:image/svg+xml," + encodeURIComponent(svg);
+  // Window + taskbar icon (only inside the chimiPack window). Debounced: the custom picker fires continuously.
+  if (window.chimi && window.chimi.setIcon) {
+    clearTimeout(_logoTimer);
+    _logoTimer = setTimeout(() => window.chimi.setIcon(drawLogoPNG(base, fg)), 120);
+  }
+}
+function drawLogoPNG(base, fg) {
+  const n = 256, c = document.createElement("canvas");
+  c.width = c.height = n;
+  const g = c.getContext("2d");
+  g.fillStyle = base;
+  g.beginPath(); g.roundRect(0, 0, n, n, 60); g.fill();
+  g.fillStyle = fg; g.textAlign = "center"; g.textBaseline = "alphabetic";
+  g.font = "700 168px 'Segoe UI Variable Display', 'Segoe UI', sans-serif";
+  g.fillText("c", n / 2, 184);
+  return c.toDataURL("image/png");
+}
+applyAccent(document.documentElement.dataset.accent);
+</script>
+<style>
+/* ------------------------------------------------------------------ tokens */
+:root {
+  --bg: #f6f5f4; --surface: #ffffff; --surface-2: #f3f2f0; --hover: #efeeec;
+  --border: #e5e3e0; --border-strong: #d3d0cb;
+  --text: #1c1917; --text-2: #57534e; --text-3: #8c8680;
+  --logo: #E4572E; --logo-fg: #ffffff;   /* the accent's base color; set by applyAccent */
+  /* Accent: set by the "Accent color" setting (applyAccent), with light/dark variants. Defaults = chimi orange. */
+  --a-light: #c4441c; --a-light-fg: #ffffff; --a-dark: #ff7a4d; --a-dark-fg: #1c0d06;
+  --accent: var(--a-light); --accent-fg: var(--a-light-fg);
+  --accent-hover: color-mix(in srgb, var(--accent) 86%, #000);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  --ok: #1d7f4e; --err: #c22f3c; --warn: #a76a10;
+  --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+  --r: 6px; --r-lg: 10px;
+  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161514; --surface: #1d1c1b; --surface-2: #242322; --hover: #2a2928;
+    --border: #2f2d2b; --border-strong: #3e3b38;
+    --text: #efedeb; --text-2: #aaa49e; --text-3: #78736d;
+    --accent: var(--a-dark); --accent-fg: var(--a-dark-fg);
+    --accent-hover: color-mix(in srgb, var(--accent) 85%, #fff);
+    --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
+    --ok: #46c086; --err: #f2636f; --warn: #e0a54a;
+    --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 32%, transparent);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161514; --surface: #1d1c1b; --surface-2: #242322; --hover: #2a2928;
+  --border: #2f2d2b; --border-strong: #3e3b38;
+  --text: #efedeb; --text-2: #aaa49e; --text-3: #78736d;
+  --accent: var(--a-dark); --accent-fg: var(--a-dark-fg);
+  --accent-hover: color-mix(in srgb, var(--accent) 85%, #fff);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --ok: #46c086; --err: #f2636f; --warn: #e0a54a;
+  --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 32%, transparent);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 13.5px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+svg { flex: none; }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+.faint { color: var(--text-3); }
+.hidden { display: none !important; }
+
+/* ------------------------------------------------------------------ layout */
+.shell { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+.appbar { display: flex; align-items: center; gap: 10px; padding: 0 12px 0 20px; height: 48px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.mark { width: 24px; height: 24px; border-radius: 6px; background: var(--logo); color: var(--logo-fg); transition: background .15s; display: grid; place-items: center;
+  font: 700 16px/1 var(--display); padding-bottom: 2px; }
+.wordmark { font: 600 15px var(--display); letter-spacing: -.01em; }
+.wordmark b { font-weight: 700; color: var(--accent); }
+.appbar .spacer { flex: 1; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0; }
+.form { overflow: auto; padding: 4px 32px 32px; }
+.form-inner { max-width: 680px; margin: 0 auto; }
+.panel { border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+.panel-scroll { overflow: auto; padding: 20px; flex: 1; }
+.panel-foot { border-top: 1px solid var(--border); padding: 16px 20px; }
+@media (max-width: 900px) {
+  .shell { height: auto; }
+  .main { grid-template-columns: 1fr; }
+  .panel { border-left: 0; border-top: 1px solid var(--border); }
+  .form { padding: 4px 16px 24px; }
+}
+
+.section { padding: 22px 0; border-bottom: 1px solid var(--border); }
+.section:last-child { border-bottom: 0; }
+h2 { font: 600 14.5px var(--display); margin: 0 0 14px; letter-spacing: -.005em; }
+.panel h2 { font-size: 13.5px; margin-bottom: 10px; }
+
+/* ------------------------------------------------------------------ controls */
+.btn { height: 30px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--border-strong); background: var(--surface);
+  display: inline-flex; align-items: center; gap: 7px; font-weight: 500; white-space: nowrap; transition: background .1s, border-color .1s; }
+.btn:hover { background: var(--hover); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.sm { height: 26px; padding: 0 9px; font-size: 12.5px; }
+.btn.icon { width: 32px; padding: 0; justify-content: center; border-color: transparent; background: transparent; color: var(--text-2); }
+.btn.icon:hover { background: var(--hover); color: var(--text); }
+.btn.link { border: 0; background: none; height: auto; padding: 0; color: var(--text-3); font-size: 12px; font-weight: 500; }
+.btn.link:hover { color: var(--accent); background: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.primary:disabled { opacity: 1; background: var(--surface-2); border-color: var(--border); color: var(--text-3); }
+.btn.block { width: 100%; justify-content: center; height: 36px; font-size: 14px; }
+.btn:focus-visible, .input:focus, .seg button:focus-visible, [role="checkbox"]:focus-visible, .switch input:focus-visible + i, .swatch:focus-visible {
+  outline: none; box-shadow: var(--focus); border-color: var(--accent); }
+
+.field { display: grid; gap: 6px; }
+.field > span { font-size: 12.5px; font-weight: 500; color: var(--text-2); }
+.field .help { font-size: 12px; color: var(--err); }
+.input { height: 32px; width: 100%; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--border-strong); background: var(--surface);
+  transition: border-color .1s, box-shadow .1s; }
+.input::placeholder { color: var(--text-3); }
+.input.invalid { border-color: var(--err); }
+select.input { appearance: none; padding-right: 28px; cursor: pointer;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238c8680' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.grid-2 .full { grid-column: 1 / -1; }
+
+.seg { display: inline-flex; padding: 2px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--border); gap: 2px; }
+.seg button { border: 0; background: transparent; height: 26px; padding: 0 11px; border-radius: 5px; color: var(--text-2); font-weight: 500; font-size: 12.5px; white-space: nowrap; }
+.seg button:hover { color: var(--text); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgba(0,0,0,.06); }
+.seg.full { display: flex; }
+.seg.full button { flex: 1; }
+
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch i { width: 30px; height: 18px; border-radius: 9px; background: var(--border-strong); position: relative; transition: background .12s; flex: none; }
+.switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .12s; }
+.switch input:checked + i { background: var(--accent); }
+.switch input:checked + i::after { transform: translateX(12px); }
+
+.check { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--surface);
+  display: grid; place-items: center; flex: none; color: var(--accent-fg); }
+.check svg { opacity: 0; }
+[aria-checked="true"] > .check { background: var(--accent); border-color: var(--accent); }
+[aria-checked="true"] > .check svg { opacity: 1; }
+
+/* ------------------------------------------------------------------ source */
+.drop { border: 1px dashed var(--border-strong); border-radius: var(--r-lg); padding: 28px 20px; display: grid; justify-items: center;
+  gap: 4px; text-align: center; background: var(--surface); transition: border-color .12s, background .12s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop strong { font-weight: 600; }
+.drop .actions { display: flex; gap: 8px; margin-top: 12px; }
+
+.source { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
+.source-top { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.source-top .grow { min-width: 0; flex: 1; }
+.source-top .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-top .path { font-family: var(--mono); font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; direction: rtl; text-align: left; }
+.source-row { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border); }
+.source-row > label { color: var(--text-2); font-size: 12.5px; font-weight: 500; }
+.source-row .detail { font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.notice { display: flex; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface-2); font-size: 12.5px; color: var(--text-2); }
+.notice svg { color: var(--warn); margin-top: 1px; }
+
+/* ------------------------------------------------------------------ details */
+.details { display: grid; grid-template-columns: 88px 1fr; gap: 24px; }
+.icon-col { display: grid; gap: 8px; justify-items: center; align-content: start; }
+.icon-well { width: 88px; height: 88px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface-2); padding: 0;
+  overflow: hidden; display: grid; place-items: center; transition: box-shadow .12s; }
+.icon-well:hover { box-shadow: 0 0 0 3px var(--hover); }
+.icon-well.over { box-shadow: var(--focus); border-color: var(--accent); }
+.icon-well img { width: 100%; height: 100%; object-fit: contain; }
+.icon-well .auto { width: 100%; height: 100%; display: grid; place-items: center; color: #fff; font: 600 38px var(--display); }
+
+/* ------------------------------------------------------------------ platforms, progress, results */
+.targets { border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.target { display: flex; align-items: center; gap: 11px; padding: 10px 12px; cursor: pointer; user-select: none; background: var(--surface); }
+.target + .target { border-top: 1px solid var(--border); }
+.target:hover { background: var(--hover); }
+.target[aria-disabled="true"] { cursor: default; opacity: .5; }
+.target .pi { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); display: grid; place-items: center; color: var(--text-2); }
+.target .t-main { min-width: 0; flex: 1; }
+.target .t-name { font-weight: 500; }
+.target .t-note { font-size: 12px; color: var(--text-3); }
+.chip { font: 500 11px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); margin-left: 4px; }
+
+.steps { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.step { display: flex; align-items: center; gap: 10px; padding: 9px 12px; }
+.step + .step { border-top: 1px solid var(--border); }
+.step .st { width: 16px; height: 16px; display: grid; place-items: center; flex: none; }
+.step .grow { flex: 1; min-width: 0; }
+.step .meta { font-size: 12px; color: var(--text-3); }
+.step.pending { color: var(--text-3); }
+.step.done .st { color: var(--ok); }
+.step.failed .st { color: var(--err); }
+.step .err-msg { font-size: 12px; color: var(--err); margin-top: 2px; word-break: break-word; }
+.ring { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-strong); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+.dot-p { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 14px; }
+.result { min-width: 0; border: 1px solid var(--border); border-radius: var(--r-lg); padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.result-top { display: flex; align-items: center; gap: 10px; }
+.result .grow { flex: 1; min-width: 0; }
+.result .fn { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result .sz { font-size: 12px; color: var(--text-3); }
+.result .how { font-size: 12px; color: var(--text-2); }
+.result .how code { font-family: var(--mono); font-size: 11.5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; word-break: break-all; }
+
+pre.log { margin: 12px 0 0; padding: 10px 12px; max-height: 180px; overflow: auto; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--r); font: 11.5px/1.6 var(--mono); color: var(--text-2); white-space: pre-wrap; }
+
+/* ------------------------------------------------------------------ settings dialog */
+dialog { border: 1px solid var(--border); border-radius: 12px; padding: 0; width: min(520px, calc(100vw - 32px)); background: var(--surface); color: var(--text);
+  box-shadow: 0 24px 60px -12px rgba(0,0,0,.35); max-height: calc(100vh - 40px); overflow: hidden; }
+dialog[open] { display: flex; flex-direction: column; }
+dialog::backdrop { background: rgba(20, 16, 12, .35); }
+.dlg-head { display: flex; align-items: center; padding: 14px 12px 14px 20px; border-bottom: 1px solid var(--border); }
+.dlg-head h2 { margin: 0; flex: 1; font-size: 15px; }
+.dlg-body { padding: 4px 20px 8px; overflow: auto; flex: 1; min-height: 0; }
+.set-group { padding: 16px 0; border-bottom: 1px solid var(--border); display: grid; gap: 14px; }
+.set-group:last-child { border-bottom: 0; }
+.set-group h3 { margin: 0; font: 600 11.5px var(--sans); text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.set-row .lbl { font-weight: 500; }
+.set-row .sub { font-size: 12px; color: var(--text-3); }
+.out-row { display: flex; gap: 6px; }
+.out-row .input { font-family: var(--mono); font-size: 12px; }
+.swatches { display: flex; gap: 6px; }
+.swatch { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border-strong); padding: 0; position: relative; }
+.swatch[aria-pressed="true"]::after { content: ""; position: absolute; inset: -4px; border-radius: 9px; border: 2px solid var(--text); }
+.swatch.auto { background: var(--surface-2); font: 600 10px var(--sans); color: var(--text-2); width: auto; padding: 0 7px; }
+.swatches { flex-wrap: wrap; }
+.swatch.custom { overflow: hidden; display: grid; place-items: center; color: var(--text-2);
+  background: conic-gradient(#e4572e, #d4930d, #2e9e5b, #12939f, #2f6fde, #7a4fbf, #d63384, #e4572e); }
+.swatch.custom span { width: 12px; height: 12px; border-radius: 50%; background: var(--surface); display: grid; place-items: center;
+  font: 700 11px/1 var(--sans); color: var(--text); }
+.swatch.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0; }
+.about { font-size: 12px; color: var(--text-3); padding: 12px 20px 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; }
+
+.toast { position: fixed; left: 20px; bottom: 20px; background: var(--text); color: var(--bg); padding: 9px 14px; border-radius: var(--r);
+  font-size: 12.5px; opacity: 0; transform: translateY(6px); transition: opacity .15s, transform .15s; pointer-events: none; max-width: 420px; }
+.toast.show { opacity: 1; transform: none; }
+
+/* ------------------------------------------------------------------ accent: everywhere it applies
+   (success/error colors stay green/red so they keep their meaning) */
+:root { accent-color: var(--accent); caret-color: var(--accent); }
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+* { scrollbar-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong)) transparent; }
+.btn:not(.primary):not(.icon):not(.link):hover:not(:disabled) { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border-strong)); }
+.btn.icon:hover { color: var(--accent); }
+.seg button[aria-pressed="true"] { color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, var(--border)), 0 1px 2px rgba(0,0,0,.06); }
+.target[aria-checked="true"] { background: var(--accent-soft); }
+.target[aria-checked="true"]:hover { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
+.target[aria-checked="true"] .pi { color: var(--accent); background: var(--surface); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.target[aria-checked="true"] .chip { color: var(--accent); background: var(--surface); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.swatch[aria-pressed="true"]::after { border-color: var(--accent); }
+.set-group h3 { color: var(--accent); }
+.icon-well:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
+.drop:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong)); }
+.result { border-left: 3px solid var(--accent); }
+.toast { border-left: 3px solid var(--accent); }
+.switch:hover i { box-shadow: 0 0 0 3px var(--accent-soft); }
+[role="checkbox"]:hover > .check { border-color: var(--accent); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-x" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7m0-7l-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></g></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.6l2 2h7.4a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></g></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></g></symbol>
+    <symbol id="p-exe" viewBox="0 0 24 24"><path d="M4 5.8l6.5-.9v6.6H4zM11.5 4.8L20 3.6v7.9h-8.5zM4 12.5h6.5v6.6L4 18.2zM11.5 12.5H20v7.9l-8.5-1.2z" fill="currentColor"/></symbol>
+    <symbol id="p-apk" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10h12v7.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 17.5z"/><path d="M6 9a6 6 0 0 1 12 0M8 4l1.4 2M16 4l-1.4 2M3.5 11v5M20.5 11v5M9.5 19v2.5M14.5 19v2.5"/></g></symbol>
+    <symbol id="p-ipa" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></g></symbol>
+    <symbol id="p-deb" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></g></symbol>
+    <symbol id="p-run" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/></g></symbol>
+  </defs>
+</svg>
+
+<div class="shell">
+  <header class="appbar">
+    <div class="mark" aria-hidden="true">c</div>
+    <div class="wordmark">chimi<b>Pack</b></div>
+    <span class="spacer"></span>
+    <button class="btn icon" id="openSettings" title="Settings" aria-label="Settings"><svg width="18" height="18"><use href="#i-gear"/></svg></button>
+  </header>
+
+  <div class="main">
+    <div class="form"><div class="form-inner">
+
+      <section class="section">
+        <h2>Source</h2>
+        <div class="drop" id="drop">
+          <strong>Drop an HTML file, folder or .zip here</strong>
+          <span class="faint">Scripts, styles and assets are included automatically.</span>
+          <div class="actions">
+            <button class="btn" id="pickFile"><svg width="15" height="15"><use href="#i-file"/></svg>Choose file…</button>
+            <button class="btn" id="pickFolder"><svg width="15" height="15"><use href="#i-folder"/></svg>Choose folder…</button>
+          </div>
+        </div>
+        <div class="source hidden" id="source">
+          <div class="source-top">
+            <div class="grow"><div class="name" id="srcName"></div><div class="path" id="srcPath"></div></div>
+            <button class="btn sm" id="changeSrc">Change…</button>
+          </div>
+          <div class="source-row" id="entryRow">
+            <label for="entry">Start page</label>
+            <select class="input" id="entry"></select>
+          </div>
+          <div class="source-row">
+            <label>Include</label>
+            <div><div class="seg" id="modes" role="group" aria-label="Files to include"></div><div class="detail" id="modeDetail"></div></div>
+          </div>
+          <div class="notice hidden" id="dropNote"><svg width="15" height="15"><use href="#i-warn"/></svg><span></span></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>App</h2>
+        <div class="details">
+          <div class="icon-col">
+            <button class="icon-well" id="iconBox" title="Click or drop an image to change the icon"><div class="auto" id="autoIcon">A</div></button>
+            <button class="btn link hidden" id="resetIcon">Reset</button>
+          </div>
+          <div class="grid-2">
+            <label class="field full"><span>Name</span><input class="input" id="name" placeholder="My App" maxlength="60" autocomplete="off"></label>
+            <label class="field"><span>App ID</span><input class="input mono" id="package" placeholder="com.chimi.myapp" spellcheck="false" autocomplete="off">
+              <span class="help hidden" id="pkgHelp">Use letters, numbers and dots, like com.chimi.myapp.</span></label>
+            <label class="field"><span>Version</span><input class="input mono" id="version" value="1.0.0" autocomplete="off"></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Display</h2>
+        <div class="grid-2">
+          <div class="field"><span>Window size</span>
+            <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center">
+              <input class="input mono" id="width" value="1200" inputmode="numeric" aria-label="Width"><span class="faint">×</span>
+              <input class="input mono" id="height" value="800" inputmode="numeric" aria-label="Height">
+            </div>
+          </div>
+          <div class="field"><span>Orientation</span><div class="seg full" id="orient" role="group" aria-label="Orientation"></div></div>
+          <label class="switch full" style="grid-column:1/-1"><input type="checkbox" id="fullscreen"><i></i>Start in fullscreen</label>
+        </div>
+      </section>
+
+    </div></div>
+
+    <aside class="panel">
+      <div class="panel-scroll">
+        <h2>Platforms</h2>
+        <div class="targets" id="targets" role="group" aria-label="Platforms"></div>
+        <div class="steps hidden" id="steps"></div>
+        <div class="results" id="results"></div>
+        <pre class="log hidden" id="log"></pre>
+      </div>
+      <div class="panel-foot">
+        <button class="btn primary block" id="build" disabled>Choose a web page</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<dialog id="settings" aria-labelledby="settingsTitle">
+  <div class="dlg-head"><h2 id="settingsTitle">Settings</h2>
+    <button class="btn icon" id="closeSettings" aria-label="Close"><svg width="14" height="14"><use href="#i-x"/></svg></button></div>
+  <div class="dlg-body">
+    <div class="set-group">
+      <h3>Appearance</h3>
+      <div class="set-row"><span class="lbl">Theme</span><div class="seg" id="themeSeg" role="group" aria-label="Theme"></div></div>
+      <div class="field"><span>Accent color</span>
+        <div class="swatches" id="accentSwatches" role="group" aria-label="Accent color"></div></div>
+    </div>
+    <div class="set-group">
+      <h3>Output</h3>
+      <div class="field"><span>Save builds to</span>
+        <div class="out-row"><input class="input" id="outdir" spellcheck="false"><button class="btn" id="pickOut">Browse…</button></div></div>
+      <label class="set-row switch" style="justify-content:space-between"><span><span class="lbl">Open the folder after building</span></span><input type="checkbox" id="openAfter"><i></i></label>
+    </div>
+    <div class="set-group">
+      <h3>New apps</h3>
+      <label class="field"><span>Publisher name</span><input class="input" id="publisher" placeholder="chimichango" autocomplete="off"></label>
+      <div class="field"><span>Generated icon color</span><div class="swatches" id="swatches" role="group" aria-label="Icon color"></div></div>
+    </div>
+    <div class="set-group">
+      <h3>Advanced</h3>
+      <label class="set-row switch" style="justify-content:space-between"><span class="lbl">Show build log</span><input type="checkbox" id="showLog"><i></i></label>
+      <div class="set-row"><div><div class="lbl">Android signing key</div><div class="sub">Back this file up. Updates to your Android apps must be signed with it.</div></div>
+        <button class="btn sm" id="showKey">Show file</button></div>
+    </div>
+  </div>
+  <div class="about"><span>chimiPack <span id="aboutVer">v%%VERSION%%</span></span><span id="aboutElectron"></span></div>
+</dialog>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const TOKEN = "%%TOKEN%%";
+const $ = id => document.getElementById(id);
+const icon = (id, size = 16) => `<svg width="${size}" height="${size}"><use href="#${id}"/></svg>`;
+
+const PLATFORMS = {
+  exe: { name: "Windows", ext: ".exe", note: "Single file, runs offline", how: "Double-click to run." },
+  apk: { name: "Android", ext: ".apk", note: "Android 7.0 and newer", how: "Copy to your phone and open it." },
+  ipa: { name: "iPhone & iPad", ext: ".ipa", note: "iOS 14 and newer, via Sideloadly", how: "Install with Sideloadly or AltStore using your Apple ID." },
+  deb: { name: "Linux", ext: ".deb", note: "Ubuntu, Debian, Mint", how: "Install with <code>sudo apt install ./FILE</code>" },
+  run: { name: "Linux", ext: ".run", note: "Portable, any distribution", how: "Run <code>chmod +x FILE</code>, then open it." },
+};
+const LABELS = { exe: "Windows (.exe)", apk: "Android (.apk)", ipa: "iPhone/iPad (.ipa)", deb: "Linux (.deb package)", run: "Linux (portable .run)" };
+const COLORS = ["#E4572E", "#2F6FDE", "#2E8B57", "#7A4FBF", "#D4930D", "#C0306A"];   // "Auto" palette: keep in sync with icons.py
+const ICON_PRESETS = [
+  ["Orange", "#E4572E"], ["Red", "#D6334A"], ["Pink", "#DB2777"], ["Magenta", "#C0306A"], ["Violet", "#7A4FBF"],
+  ["Indigo", "#4F46E5"], ["Blue", "#2F6FDE"], ["Sky", "#0EA5E9"], ["Teal", "#12939F"], ["Green", "#2E8B57"],
+  ["Lime", "#65A30D"], ["Amber", "#D4930D"], ["Yellow", "#FACC15"], ["Brown", "#8B5E3C"], ["Slate", "#475569"],
+  ["Black", "#18181B"], ["White", "#F5F5F4"],
+];
+// Same rule as icons.letter_color(): dark letter on light backgrounds.
+const letterColor = bg => _contrast(bg, "#ffffff") >= 2.6 ? "#ffffff" : "#1c1917";
+const MODES = [["folder", "Whole folder"], ["referenced", "Used files only"], ["single", "HTML file only"]];
+const ORIENTS = [["auto", "Auto"], ["portrait", "Portrait"], ["landscape", "Landscape"]];
+const THEMES = [["system", "System"], ["light", "Light"], ["dark", "Dark"]];
+
+const S = { info: null, icon: null, mode: "folder", orient: "auto", targets: new Set(), nameEdited: false, pkgEdited: false,
+            env: {}, cfg: {}, building: false };
+
+/* ------------------------------------------------------------ helpers */
+async function api(path, body) {
+  const r = await fetch(path, { method: body === undefined ? "GET" : "POST",
+    headers: { "X-Token": TOKEN, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const pickPath = async (kind, start) => window.chimi ? window.chimi.pick(kind, start) : (await api("/api/pick", { kind, start })).path;
+const reveal = p => window.chimi ? window.chimi.reveal(p) : api("/api/reveal", { path: p });
+const droppedPath = dt => (window.chimi && dt.files.length === 1) ? window.chimi.pathFor(dt.files[0]) : "";
+function toast(msg, ms = 2600) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), ms); }
+const fmt = b => b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(1) + " MB";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const base = p => p.split(/[\\/]/).pop();
+const defaultPkg = name => { let s = name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "app"; if (/^\d/.test(s)) s = "app" + s; return "com.chimi." + s; };
+const validPkg = p => /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(p);
+const outputDir = () => S.cfg.output_dir || S.env.default_output;
+
+function segmented(el, items, current, onPick) {
+  el.innerHTML = "";
+  for (const [v, label] of items) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.setAttribute("aria-pressed", v === current);
+    b.onclick = () => onPick(v);
+    el.appendChild(b);
+  }
+}
+async function saveSetting(changes) {
+  Object.assign(S.cfg, changes);
+  try { S.cfg = await api("/api/settings", changes); } catch (e) { toast("Couldn't save settings: " + e.message); }
+}
+
+/* ------------------------------------------------------------ platforms */
+function renderTargets() {
+  const box = $("targets"); box.innerHTML = "";
+  for (const [k, p] of Object.entries(PLATFORMS)) {
+    const disabled = k === "exe" && S.env.windows_ok === false;
+    const on = S.targets.has(k) && !disabled;
+    const row = document.createElement("div");
+    row.className = "target"; row.tabIndex = disabled ? -1 : 0;
+    row.setAttribute("role", "checkbox"); row.setAttribute("aria-checked", on); row.setAttribute("aria-disabled", disabled);
+    row.innerHTML = `<span class="check">${icon("i-check", 12)}</span><span class="pi">${icon("p-" + k, 15)}</span>
+      <span class="t-main"><div class="t-name">${p.name}<span class="chip">${p.ext}</span></div>
+      <div class="t-note">${disabled ? "Needs Windows to build" : p.note}</div></span>`;
+    const toggle = () => {
+      if (disabled || S.building) return;
+      on ? S.targets.delete(k) : S.targets.add(k);
+      saveSetting({ targets: [...S.targets] }); renderTargets(); updateBuild();
+    };
+    row.onclick = toggle;
+    row.onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle(); } };
+    box.appendChild(row);
+  }
+}
+
+/* ------------------------------------------------------------ icon */
+function iconColor() {
+  const name = $("name").value || "App";
+  if (S.cfg.icon_color && S.cfg.icon_color !== "auto") return S.cfg.icon_color;
+  return COLORS[[...name].reduce((a, c) => a + c.codePointAt(0), 0) % COLORS.length];
+}
+function renderIcon() {
+  const box = $("iconBox"), auto = $("autoIcon");
+  box.querySelector("img")?.remove();
+  if (S.icon) {
+    const img = document.createElement("img"); img.alt = "";
+    img.src = "/api/image?t=" + TOKEN + "&path=" + encodeURIComponent(S.icon);
+    img.onerror = () => toast("Can't preview that image, but it will still be used if it's valid.");
+    box.prepend(img);
+    auto.classList.add("hidden"); $("resetIcon").classList.remove("hidden");
+  } else {
+    const bg = iconColor();
+    auto.classList.remove("hidden"); auto.style.background = bg; auto.style.color = letterColor(bg);
+    auto.textContent = ([...($("name").value || "App")].find(ch => /[\p{L}\p{N}]/u.test(ch)) || "A").toUpperCase();
+    $("resetIcon").classList.add("hidden");
+  }
+}
+$("iconBox").onclick = async () => { const p = await pickPath("icon"); if (p) { S.icon = p; renderIcon(); } };
+$("resetIcon").onclick = () => { S.icon = null; renderIcon(); };
+
+/* ------------------------------------------------------------ source */
+async function loadSource(path, note) {
+  try {
+    const info = await api("/api/inspect", { path });
+    S.info = info; S.mode = info.suggested_mode;
+    $("drop").classList.add("hidden"); $("source").classList.remove("hidden");
+    $("srcName").textContent = info.kind === "file" ? info.entry : base(info.input) || info.input;
+    $("srcPath").textContent = info.input; $("srcPath").title = info.input;
+    const sel = $("entry"); sel.innerHTML = "";
+    const pages = info.html_files.includes(info.entry) ? info.html_files : [info.entry, ...info.html_files];
+    for (const h of pages) sel.add(new Option(h, h));
+    sel.value = info.entry;
+    $("entryRow").classList.toggle("hidden", pages.length < 2);
+    renderModes();
+    if (!S.nameEdited) $("name").value = info.title;
+    if (!S.pkgEdited) $("package").value = defaultPkg($("name").value);
+    if (info.icon && !S.icon) S.icon = info.icon;
+    $("dropNote").classList.toggle("hidden", !note);
+    $("dropNote").querySelector("span").textContent = note || "";
+    renderIcon(); updateBuild();
+  } catch (e) { toast(e.message, 4000); }
+}
+function renderModes() {
+  const i = S.info;
+  segmented($("modes"), MODES, S.mode, v => { S.mode = v; renderModes(); });
+  const files = i.folder_files >= 5001 ? "5,000+" : i.folder_files.toLocaleString();
+  $("modeDetail").textContent = {
+    folder: `${files} files, ${fmt(i.folder_bytes)}${i.folder_is_big ? " (large; try “Used files only”)" : ""}`,
+    referenced: `${i.referenced_files} files, ${fmt(i.referenced_bytes)}, found by following the page's links`,
+    single: "Only the start page, for fully self-contained pages.",
+  }[S.mode];
+}
+$("entry").onchange = () => { const root = S.info.root, sep = root.includes("\\") ? "\\" : "/"; loadSource(root + sep + $("entry").value.replaceAll("/", sep)); };
+$("pickFile").onclick = async () => { const p = await pickPath("file"); if (p) loadSource(p); };
+$("pickFolder").onclick = async () => { const p = await pickPath("folder"); if (p) loadSource(p); };
+$("changeSrc").onclick = () => { S.info = null; $("source").classList.add("hidden"); $("drop").classList.remove("hidden"); updateBuild(); };
+
+/* ------------------------------------------------------------ drag & drop */
+function readEntries(dir) {
+  return new Promise(res => { const out = [], rd = dir.createReader();
+    const next = () => rd.readEntries(b => { if (!b.length) return res(out); out.push(...b); next(); }, () => res(out)); next(); });
+}
+async function walk(entry, prefix, list) {
+  if (entry.isFile) list.push([prefix + entry.name, await new Promise((r, j) => entry.file(r, j))]);
+  else if (entry.isDirectory && ![".git", "node_modules", "__pycache__"].includes(entry.name))
+    for (const e of await readEntries(entry)) await walk(e, prefix + entry.name + "/", list);
+}
+async function uploadDropped(dt) {
+  const entries = [...dt.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const list = [];
+  for (const e of entries) await walk(e, "", list);
+  if (!list.length) return null;
+  if (list.reduce((a, [, f]) => a + f.size, 0) > 1024 * 1048576) { toast("That's over 1 GB. Use Choose folder instead."); return null; }
+  const up = await api("/api/upload/start", {});
+  let done = 0; const q = list.slice();
+  toast(`Reading ${list.length} files…`, 60000);
+  const worker = async () => { while (q.length) { const [rel, f] = q.shift();
+    await fetch(`/api/upload/${up.id}/` + rel.split("/").map(encodeURIComponent).join("/"), { method: "PUT", headers: { "X-Token": TOKEN }, body: f });
+    if (++done % 20 === 0) toast(`Reading files… ${done}/${list.length}`, 60000); } };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  toast("Files ready", 1200);
+  const sep = up.dir.includes("\\") ? "\\" : "/";
+  if (entries.length === 1) return { path: up.dir + sep + entries[0].name, single: entries[0].isFile, name: entries[0].name };
+  return { path: up.dir, single: false };
+}
+let dragDepth = 0;
+document.addEventListener("dragenter", e => { e.preventDefault(); if (++dragDepth === 1 && !S.info) $("drop").classList.add("over"); });
+document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("drop").classList.remove("over"); $("iconBox").classList.remove("over"); } });
+document.addEventListener("dragover", e => e.preventDefault());
+$("iconBox").addEventListener("dragenter", () => $("iconBox").classList.add("over"));
+$("iconBox").addEventListener("dragleave", () => $("iconBox").classList.remove("over"));
+document.addEventListener("drop", async e => {
+  e.preventDefault(); dragDepth = 0; $("drop").classList.remove("over"); $("iconBox").classList.remove("over");
+  const direct = droppedPath(e.dataTransfer);
+  if (e.target.closest && e.target.closest("#iconBox")) {
+    const r = direct ? { path: direct } : await uploadDropped(e.dataTransfer);
+    if (r && /\.(png|jpe?g|ico|bmp|gif)$/i.test(r.path)) { S.icon = r.path; renderIcon(); }
+    else if (r) toast("Icons can be PNG, JPG, ICO, BMP or GIF.");
+    return;
+  }
+  if (direct) return loadSource(direct);
+  const r = await uploadDropped(e.dataTransfer);
+  if (r) loadSource(r.path, r.single && /\.html?$/i.test(r.name)
+    ? "Only the HTML file was dropped. If it uses other files, drop its folder instead so they're included." : "");
+});
+
+/* ------------------------------------------------------------ app + display */
+$("name").oninput = () => { S.nameEdited = true; if (!S.pkgEdited) $("package").value = defaultPkg($("name").value || "app"); renderIcon(); updateBuild(); };
+$("package").oninput = () => { S.pkgEdited = true; updateBuild(); };
+const renderOrient = () => segmented($("orient"), ORIENTS, S.orient, v => { S.orient = v; renderOrient(); });
+renderOrient();
+["width", "height"].forEach(id => $(id).addEventListener("input", () => { $(id).value = $(id).value.replace(/\D/g, "").slice(0, 4); }));
+
+function activeTargets() { return Object.keys(PLATFORMS).filter(k => S.targets.has(k) && !(k === "exe" && S.env.windows_ok === false)); }
+function updateBuild() {
+  const pkg = $("package").value.trim(), pkgOk = validPkg(pkg), n = activeTargets().length;
+  $("package").classList.toggle("invalid", !!pkg && !pkgOk);
+  $("pkgHelp").classList.toggle("hidden", !pkg || pkgOk);
+  const b = $("build");
+  b.disabled = !!(S.building || !S.info || !n || !pkgOk || !$("name").value.trim());
+  b.textContent = S.building ? "Building…" : !S.info ? "Choose a web page" : !n ? "Select a platform"
+    : !$("name").value.trim() ? "Name your app" : !pkgOk ? "Fix the App ID" : n > 1 ? `Build ${n} apps` : "Build app";
+}
+
+/* ------------------------------------------------------------ build */
+function stepHTML(state, k, meta = "", err = "") {
+  const st = state === "running" ? '<span class="ring"></span>' : state === "done" ? icon("i-check", 14)
+    : state === "failed" ? icon("i-x", 14) : '<span class="dot-p"></span>';
+  return `<span class="st">${st}</span><span class="grow">${PLATFORMS[k].name} <span class="faint">${PLATFORMS[k].ext}</span>
+    ${err ? `<div class="err-msg">${esc(err)}</div>` : ""}</span><span class="meta">${meta}</span>`;
+}
+async function build() {
+  if ($("build").disabled) return;
+  const targets = activeTargets();
+  const opts = {
+    root: S.info.root, entry: $("entry").value || S.info.entry, mode: S.mode, name: $("name").value.trim(),
+    package: $("package").value.trim(), version: $("version").value.trim() || "1.0.0", publisher: S.cfg.publisher || "",
+    icon: S.icon, icon_color: S.cfg.icon_color, width: +$("width").value || 1200, height: +$("height").value || 800,
+    fullscreen: $("fullscreen").checked, orientation: S.orient, targets, output_dir: outputDir(),
+  };
+  $("steps").innerHTML = ""; $("results").innerHTML = ""; $("log").textContent = "";
+  $("steps").classList.remove("hidden"); $("log").classList.toggle("hidden", !S.cfg.show_log);
+  const rows = {};
+  for (const k of targets) { const d = document.createElement("div"); d.className = "step pending"; d.innerHTML = stepHTML("pending", k); $("steps").appendChild(d); rows[k] = d; }
+  S.building = true; updateBuild();
+  try { await api("/api/build", opts); }
+  catch (e) { S.building = false; updateBuild(); $("steps").classList.add("hidden"); return toast(e.message, 4000); }
+
+  let seen = 0, current = null, started = 0;
+  const setStep = (k, state, err) => { if (!rows[k]) return;
+    rows[k].className = "step " + state;
+    rows[k].innerHTML = stepHTML(state, k, state === "done" || state === "failed" ? ((performance.now() - started) / 1000).toFixed(1) + "s" : "", err); };
+  const poll = async () => {
+    let j;
+    try { j = await api("/api/job?since=" + seen); } catch { return setTimeout(poll, 800); }
+    for (const line of j.log) {
+      $("log").textContent += line + "\n";
+      const k = Object.keys(LABELS).find(t => line === `Building ${LABELS[t]}...`);
+      if (k) { current = k; started = performance.now(); setStep(k, "running"); }
+      else if (current && line.startsWith("  done:")) setStep(current, "done");
+      else if (current && line.startsWith("  FAILED:")) setStep(current, "failed", line.slice(10));
+    }
+    seen += j.log.length; $("log").scrollTop = 1e9;
+    if (!j.done) return setTimeout(poll, 300);
+    S.building = false; updateBuild(); showResults(j);
+  };
+  poll();
+}
+$("build").onclick = build;
+
+function showResults(j) {
+  if (j.error) { $("steps").innerHTML = `<div class="step failed"><span class="st">${icon("i-x", 14)}</span><span class="grow">Build failed<div class="err-msg">${esc(j.error)}</div></span></div>`; return; }
+  const r = j.result;
+  if (!r.errors.length) $("steps").classList.add("hidden");
+  for (const o of r.outputs) {
+    const fn = base(o.path), p = PLATFORMS[o.target];
+    const el = document.createElement("div"); el.className = "result";
+    el.innerHTML = `<div class="result-top"><div class="grow"><div class="fn" title="${esc(o.path)}">${esc(fn)}</div>
+      <div class="sz">${p.name} · ${fmt(o.size)}</div></div><button class="btn sm">Show</button></div>
+      <div class="how">${p.how.replaceAll("FILE", esc(fn))}</div>`;
+    el.querySelector("button").onclick = () => reveal(o.path);
+    $("results").appendChild(el);
+  }
+  if (r.outputs.length) {
+    toast(r.errors.length ? `Built ${r.outputs.length}, ${r.errors.length} failed` : `Built ${r.outputs.length} app${r.outputs.length > 1 ? "s" : ""}`);
+    if (S.cfg.open_after_build) reveal(r.output_dir);
+  }
+}
+
+/* ------------------------------------------------------------ settings */
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  if (window.chimi && window.chimi.setTheme) window.chimi.setTheme(t);
+}
+const isDark = () => { const t = document.documentElement.dataset.theme; return t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches); };
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if ($("settings").open) renderAccents(); });
+
+function renderAccents() {
+  const box = $("accentSwatches"), current = S.cfg.accent || "chimi", dark = isDark();
+  box.innerHTML = "";
+  for (const [id, label, baseHex] of ACCENTS) {
+    const sh = id === "chimi" ? { light: "#c4441c", dark: "#ff7a4d" } : accentShades(baseHex);
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "swatch"; b.title = label; b.setAttribute("aria-label", label);
+    b.style.background = dark ? sh.dark : sh.light;
+    b.setAttribute("aria-pressed", current === id);
+    b.onclick = () => setAccent(id);
+    box.appendChild(b);
+  }
+  // Custom: a native color picker hidden inside a rainbow swatch.
+  const isCustom = current.startsWith("#");
+  const c = document.createElement("label");
+  c.className = "swatch custom"; c.title = isCustom ? `Custom (${current})` : "Custom color…";
+  c.setAttribute("aria-pressed", isCustom);
+  if (isCustom) { const sh = accentShades(current); c.style.background = dark ? sh.dark : sh.light; }
+  c.innerHTML = `${isCustom ? "" : "<span>+</span>"}<input type="color" aria-label="Custom accent color" value="${isCustom ? current : "#e4572e"}">`;
+  const input = c.querySelector("input");
+  input.oninput = () => applyAccent(input.value);            // live preview while dragging
+  input.onchange = () => setAccent(input.value.toLowerCase());
+  box.appendChild(c);
+}
+function renderIconSwatches() {
+  const sw = $("swatches"), current = (S.cfg.icon_color || "auto").toLowerCase();
+  sw.innerHTML = "";
+  const setIconColor = v => saveSetting({ icon_color: v }).then(() => { renderIconSwatches(); renderIcon(); });
+  const auto = document.createElement("button");
+  auto.type = "button"; auto.className = "swatch auto"; auto.textContent = "Auto";
+  auto.title = "A color picked from the app's name"; auto.setAttribute("aria-pressed", current === "auto");
+  auto.onclick = () => setIconColor("auto");
+  sw.appendChild(auto);
+  for (const [label, hex] of ICON_PRESETS) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "swatch"; b.style.background = hex;
+    b.title = label; b.setAttribute("aria-label", label);
+    b.setAttribute("aria-pressed", current === hex.toLowerCase());
+    b.onclick = () => setIconColor(hex);
+    sw.appendChild(b);
+  }
+  const isCustom = current.startsWith("#") && !ICON_PRESETS.some(p => p[1].toLowerCase() === current);
+  const c = document.createElement("label");
+  c.className = "swatch custom"; c.title = isCustom ? `Custom (${current})` : "Custom color…";
+  c.setAttribute("aria-pressed", isCustom);
+  if (isCustom) c.style.background = current;
+  c.innerHTML = `${isCustom ? "" : "<span>+</span>"}<input type="color" aria-label="Custom icon color" value="${isCustom ? current : "#e4572e"}">`;
+  const input = c.querySelector("input");
+  input.oninput = () => { S.cfg.icon_color = input.value; renderIcon(); };    // live preview on the icon
+  input.onchange = () => setIconColor(input.value.toUpperCase());
+  sw.appendChild(c);
+}
+function setAccent(v) { applyAccent(v); saveSetting({ accent: v }).then(renderAccents); }
+function renderSettings() {
+  const c = S.cfg;
+  segmented($("themeSeg"), THEMES, c.theme, v => { applyTheme(v); saveSetting({ theme: v }).then(renderSettings); });
+  renderAccents();
+  $("outdir").value = outputDir();
+  $("openAfter").checked = !!c.open_after_build;
+  $("showLog").checked = !!c.show_log;
+  $("publisher").value = c.publisher || "";
+  renderIconSwatches();
+  $("showKey").disabled = !S.env.key_exists;
+  $("showKey").title = S.env.key_exists ? S.env.key_path : "Created the first time you build an Android app";
+}
+$("openSettings").onclick = () => { renderSettings(); $("settings").showModal(); };
+$("closeSettings").onclick = () => $("settings").close();
+$("settings").addEventListener("click", e => { if (e.target === $("settings")) $("settings").close(); });
+$("openAfter").onchange = () => saveSetting({ open_after_build: $("openAfter").checked });
+$("showLog").onchange = () => saveSetting({ show_log: $("showLog").checked });
+$("publisher").onchange = () => saveSetting({ publisher: $("publisher").value.trim() });
+$("outdir").onchange = () => saveSetting({ output_dir: $("outdir").value.trim() });
+$("pickOut").onclick = async () => { const p = await pickPath("output", outputDir()); if (p) { $("outdir").value = p; saveSetting({ output_dir: p }); } };
+$("showKey").onclick = () => reveal(S.env.key_path);
+
+/* ------------------------------------------------------------ keyboard + init */
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); build(); }
+  else if (e.ctrlKey && e.key.toLowerCase() === "o") { e.preventDefault(); $("pickFile").click(); }
+  else if (e.ctrlKey && e.key === ",") { e.preventDefault(); $("openSettings").click(); }
+});
+
+(async () => {
+  try {
+    S.env = await api("/api/env");
+    S.cfg = S.env.settings;
+    S.targets = new Set(S.cfg.targets);
+    applyTheme(S.cfg.theme);
+    applyAccent(S.cfg.accent || "chimi");
+    $("aboutElectron").textContent = "Electron " + S.env.electron_version;
+  } catch (e) { toast("Couldn't reach chimiPack: " + e.message); }
+  renderTargets(); renderIcon(); updateBuild();
+  setInterval(() => api("/api/ping").catch(() => {}), 10000);
+})();
+</script>
+</body>
+</html>
