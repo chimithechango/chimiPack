@@ -1,5 +1,7 @@
 # chimiPack
 
+[PORTION OF THIS PROGRAM INCLUDING THE README WAS CREATED WITH THE ASSISTANCE OF ARTIFICIAL INTELLIGENCE]
+
 A chimi tool that packs any HTML page (and the JS, CSS, images, sounds and fonts it uses) into:
 
 | Output | What you get |
